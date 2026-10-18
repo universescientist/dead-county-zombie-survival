@@ -124,7 +124,7 @@ const recipes=[
 let state,player,zombies=[],particles=[],tracers=[],texts=[],spawnTimer=0,clock=0,uiTimer=0,miniTimer=0,last=0,saveTimer=0,started=false,paused=true,modalActive=true,screenShake=0,audioEnabled=false,audioCtx=null,attackHeld=false,runHeld=false;
 let aim={x:SW/2+80,y:SH/2},keys=new Set(),joy={x:0,y:0},frame=0,chunkCache=new Map(),nearObject=null;
 const PAD=208;let BW=SW+PAD*2,BH=SH+PAD*2,sceneDirty=true,anchor=null,oldRects=[],lastDynamicKey="",lastRoofKey="",lastCamCSS="",lastOpacity=-1;
-const spriteCache=new Map(),renderStats={staticBuilds:0,staticDrawTiles:0,actorFrames:0,skippedActorFrames:0,clearedPixels:0,lastClearRatio:0,lastStaticMs:0,lastActorMs:0,frames:0};
+const spriteCache=new Map(),tileSpriteCache=new Map(),renderStats={staticBuilds:0,staticDrawTiles:0,tileSpriteMisses:0,tileSpriteHits:0,actorFrames:0,skippedActorFrames:0,clearedPixels:0,lastClearRatio:0,lastStaticMs:0,lastActorMs:0,frames:0};
 const layerOverlay=document.getElementById("night-layer");
 function invalidateScene(){sceneDirty=true;lastDynamicKey=""}
 function configureCanvas(){
@@ -138,7 +138,7 @@ function positionBuffers(force=false){
  const b=$("game-wrap").getBoundingClientRect(),scale=Math.max(b.width/SW,b.height/SH),
  p=iso(player.x,player.y),left=(b.width-BW*scale)*.5,
  top=(b.height-BH*scale)*.5,
- moveX=(anchor.x-p.x)*scale,moveY=(anchor.y-p.y)*scale,
+ moveX=Math.round((anchor.x-p.x)*scale*devicePixelRatio)/devicePixelRatio,moveY=Math.round((anchor.y-p.y)*scale*devicePixelRatio)/devicePixelRatio,
  key=Math.round(moveX*10)+":"+Math.round(moveY*10)+":"+Math.round(scale*10000);
  if(!force&&key===lastCamCSS)return;
  lastCamCSS=key;
@@ -234,7 +234,7 @@ function showOverlay(id){if(!started)return;paused=true;modalActive=true;$("inve
 function togglePause(){if(!started)return;if(modalActive){hideModals();return}paused=!paused;notify(paused?"JOGO PAUSADO. ESC PARA CONTINUAR.":"RETOMANDO...");if(paused)save()}
 function update(dt){clock+=dt;frame++;state.elapsed+=dt;state.weaponCooldown=Math.max(0,state.weaponCooldown-dt);const previousReload=state.reload;state.reload=Math.max(0,state.reload-dt);player.hurt=Math.max(0,player.hurt-dt);screenShake=Math.max(0,screenShake-dt*14);state.shout=Math.max(0,state.shout-dt);
  if(state.reloadPending&&previousReload>0&&state.reload===0&&state.weapon===2&&state.mag<8&&state.inv.ammo>0){state.reloadPending=false;let n=Math.min(8-state.mag,state.inv.ammo);state.mag+=n;state.inv.ammo-=n;sound(440,.08)}
- let mx=(keys.has("d")||keys.has("ArrowRight")?1:0)-(keys.has("a")||keys.has("ArrowLeft")?1:0)+joy.x,my=(keys.has("s")||keys.has("ArrowDown")?1:0)-(keys.has("w")||keys.has("ArrowUp")?1:0)+joy.y,mag=Math.hypot(mx,my);if(mag>1){mx/=mag;my/=mag}const movement=walkVector(mx,my);const running=(keys.has("Shift")||runHeld)&&state.stamina>2&&mag>.1&&state.hunger>0;let speed=running?155:99;if(state.stamina<12)speed*=.7;if(mag>.05){slideMove(player,movement.x*speed*dt,movement.y*speed*dt,9);player.walk+=dt*(running?15:9);if(running)state.stamina=Math.max(0,state.stamina-dt*15)}else player.walk+=dt*1.4;state.stamina=Math.min(100,state.stamina+dt*(running?1:10));
+ let mx=(keys.has("d")||keys.has("ArrowRight")?1:0)-(keys.has("a")||keys.has("ArrowLeft")?1:0)+joy.x,my=(keys.has("s")||keys.has("ArrowDown")?1:0)-(keys.has("w")||keys.has("ArrowUp")?1:0)+joy.y,mag=Math.hypot(mx,my);if(mag>1){mx/=mag;my/=mag}const movement=walkVector(mx,my);const running=(keys.has("Shift")||runHeld)&&state.stamina>2&&mag>.1&&state.hunger>0;let speed=running?155:99;if(state.stamina<12)speed*=.7;if(mag>.05){slideMove(player,movement.x*speed*dt,movement.y*speed*dt,9);player.walk+=dt*(running?15:9);if(running)state.stamina=Math.max(0,state.stamina-dt*15)}else player.walk=0;state.stamina=Math.min(100,state.stamina+dt*(running?1:10));
  const aX=aim.x-SW/2,aY=aim.y-SH/2;if(Math.hypot(aX,aY)>10){let w=screenDeltaToWorld(aX,aY);player.facing=Math.atan2(w.y,w.x)}else if(mag>.05)player.facing=Math.atan2(movement.y,movement.x);
  if(attackHeld)attack();
  state.hunger=Math.max(0,state.hunger-dt*.027);state.thirst=Math.max(0,state.thirst-dt*.038);if(state.hunger===0||state.thirst===0)state.hp=Math.max(0,state.hp-dt*1.8);if(state.infection>0)state.hp=Math.max(0,state.hp-dt*.014*state.infection);if(state.hp<=0){end(false);return}
@@ -322,6 +322,18 @@ function drawCar(c,x,y,car){
  c.restore();
 }
 
+function stampTile(c,x,y,t,tx,ty){
+ const h=hash(tx,ty),rx=tx%24===2&&ty%24>5?1:0,ry=ty%24===2&&tx%24>5?1:0;
+ const k=t+":"+h%16+":"+rx+":"+ry;
+ let sprite=tileSpriteCache.get(k);
+ if(!sprite){
+  sprite=document.createElement("canvas");sprite.width=68;sprite.height=36;
+  const pen=sprite.getContext("2d",{alpha:true});pen.imageSmoothingEnabled=false;
+  tileArt(pen,34,18,t,tx,ty);
+  tileSpriteCache.set(k,sprite);renderStats.tileSpriteMisses++;
+ }else renderStats.tileSpriteHits++;
+ c.drawImage(sprite,Math.round(x-34),Math.round(y-18));renderStats.staticDrawTiles++;
+}
 function makeChunk(cx,cy){
  // Cached static terrain, never recreate per frame. All elevated objects are depth-sorted separately.
  const a=document.createElement("canvas");a.width=CH*IW*2+2;a.height=CH*IH*2+2;
@@ -330,7 +342,7 @@ function makeChunk(cx,cy){
  for(let sum=0;sum<CH*2-1;sum++)for(let x=0;x<CH;x++){
    const y=sum-x;if(y<0||y>=CH)continue;
    const tx=cx*CH+x,ty=cy*CH+y,center=iso(tx*T+T/2,ty*T+T/2);
-   tileArt(c,center.x-minX,center.y-minY,at(tx,ty),tx,ty);
+   stampTile(c,center.x-minX,center.y-minY,at(tx,ty),tx,ty);
  }
  for(const d of debris)if(Math.floor(d.x/(CH*T))===cx&&Math.floor(d.y/(CH*T))===cy){
    const q=iso(d.x,d.y);px(c,q.x-minX-4,q.y-minY-2,8,2,d.type===0?"#ac926c":"#1e3733");
@@ -507,7 +519,7 @@ function paintStatic(){
   else if(kind==="tower")towerArt(ctx,p.x,p.y);
   else if(kind==="barrier"){px(ctx,p.x-15,p.y-16,30,15,"#47392b");px(ctx,p.x-13,p.y-19,27,5,"#b2905e");px(ctx,p.x-13,p.y-10,27,5,"#95794e");px(ctx,p.x-10,p.y-21,5,26,"#59442e")}
  }
- sceneDirty=false;renderStats.staticBuilds++;renderStats.staticDrawTiles+=chunkCache.size*CH*CH;
+ sceneDirty=false;renderStats.staticBuilds++;
  renderStats.lastStaticMs=performance.now()-startedAt;ctx=actorCtx;oldRects=[];lastDynamicKey="";
 }
 function dynamicActors(){
@@ -589,5 +601,5 @@ window.addEventListener("blur",()=>{if(started&&!modalActive){paused=true;save()
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&started){paused=true;save()}});
 if(localStorage.getItem(SAVE))$("continueBtn").hidden=false;
 updateHud();drawMinimap();requestAnimationFrame(loop);
-window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,solidLookups,collisionBuckets:collisionBuckets.size,flowBuilds,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
+window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,tileSpriteCache:tileSpriteCache.size,solidLookups,collisionBuckets:collisionBuckets.size,flowBuilds,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
 })();
