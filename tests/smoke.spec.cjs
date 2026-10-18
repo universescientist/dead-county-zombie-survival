@@ -1,0 +1,37 @@
+const {test,expect}=require('@playwright/test');
+test('desktop: abre, renderiza, salva, saqueia e ativa a torre',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
+ await expect(page.locator('#startBtn')).toBeVisible();
+ await page.click('#startBtn');
+ await expect(page.locator('#modal')).not.toHaveClass(/show/);
+ let data=await page.evaluate(()=>window.DeadCountyDebug.getState());
+ expect(data.started).toBeTruthy();expect(data.paused).toBeFalsy();expect(data.world.w).toBe(112);
+ await page.evaluate(()=>window.DeadCountyDebug.tick(220));
+ data=await page.evaluate(()=>window.DeadCountyDebug.getState());
+ expect(data.zombies).toBeGreaterThan(0);
+ await page.keyboard.press('i');await expect(page.locator('#inventoryModal')).toHaveClass(/show/);
+ await page.keyboard.press('Escape');await expect(page.locator('#inventoryModal')).not.toHaveClass(/show/);
+ await page.evaluate(()=>{let d=window.DeadCountyDebug;d.grant('cloth',2);d.craft();d.save()});
+ data=await page.evaluate(()=>window.DeadCountyDebug.getState());
+ expect(data.inventory.med).toBeGreaterThan(2);
+ const saved=await page.evaluate(()=>localStorage.getItem('dead-county-save-v1'));
+ expect(saved).toBeTruthy();
+ await page.evaluate(()=>{let d=window.DeadCountyDebug;d.grant('circuit',3);d.grant('fuel',2);d.grant('scrap',5);d.teleport(99,25);d.interact()});
+ data=await page.evaluate(()=>window.DeadCountyDebug.getState());
+ expect(data.stage).toBe('defend');
+ await page.screenshot({path:'test-results/desktop.png',fullPage:true});
+ expect(errors).toEqual([]);
+});
+test('mobile: interface tátil, movimentação, gameplay e HUD',async({browser})=>{
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
+ await page.tap('#startBtn');
+ await expect(page.locator('#mobile')).toBeVisible();
+ await page.tap('#mobAttack');
+ await page.evaluate(()=>window.DeadCountyDebug.tick(80));
+ expect((await page.evaluate(()=>window.DeadCountyDebug.getState())).started).toBeTruthy();
+ await page.screenshot({path:'test-results/mobile.png',fullPage:true});
+ expect(errors).toEqual([]);await context.close();
+});
