@@ -1,6 +1,6 @@
 # DEAD COUNTY
 
-Jogo de sobrevivência zumbi em pixel art, executado diretamente no navegador.
+Jogo de sobrevivência zumbi em pixel art isométrico 3/4, executado diretamente no navegador.
 
 ## Como jogar
 
@@ -8,7 +8,8 @@ Abra `index.html` ou inicie `python3 -m http.server 8080`. Use WASD para mover, 
 
 ## Sistemas
 
-- Mundo gerado deterministicamente, cache LRU de chunks, sprites pixel art por Canvas 2D.
+- Mundo gerado deterministicamente com tiles losangulares 2:1, câmera isométrica, cache LRU de chunks e sprites pixel art Canvas 2D.
+- Telhados com oclusão transparente, edifícios com fachadas em 3/4 e móveis nos interiores.
 - Zumbis comuns e corredores, armas, inventário, loot e crafting.
 - Fome, sede, infecção, estamina, saúde, chuva, ciclo dia-noite e salvamento local.
 - Missão: reunir circuitos, combustível e sucata, ativar torre e sobreviver à defesa.
