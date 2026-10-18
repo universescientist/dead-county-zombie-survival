@@ -2,3 +2,11 @@
 /* Keep urgent notifications clear of touch controls in portrait. */
 @media(pointer:coarse){#toasts{bottom:auto;top:211px;right:8px;max-width:min(205px,52vw)}#toasts .toast{font-size:9px;padding:7px 9px;max-width:205px;background:#0b1615e8}#nearby{bottom:199px}}
 @media(max-width:500px){.brand small{letter-spacing:.3px}.worldmeta .score{font-size:7px}#mission{max-width:52vw}}
+
+/* Three compositor-managed layers. Static scene never repainted during ordinary camera motion. */
+#world,#game{position:absolute!important;max-width:none!important;object-fit:fill!important;image-rendering:pixelated!important;width:auto;height:auto;left:0;top:0;right:auto;bottom:auto}
+#world{z-index:0;pointer-events:none;will-change:left,top}
+#game{z-index:1;will-change:left,top;cursor:crosshair;background:transparent!important}
+#night-layer{z-index:2;position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 50%,#07121b 1%,#040e18 100%)}
+#grain{z-index:3}
+@media (pointer:coarse){#game{cursor:default}}
