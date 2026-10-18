@@ -150,13 +150,13 @@ function rect(x,y,w,h){return{x:Math.floor(x),y:Math.floor(y),w:Math.ceil(w),h:M
 function insideBuffer(p,pad=80){return p.x>-pad&&p.x<BW+pad&&p.y>-pad&&p.y<BH+pad}
 function roofState(){const blocks=[];for(let i=0;i<houses.length;i++){const h=houses[i];if(player.x>(h.x*T-152)&&player.x<(h.x+h.w)*T+152&&player.y>(h.y*T-152)&&player.y<(h.y+h.h)*T+152)blocks.push(i)}return blocks.join(",")}
 
-function resizeGame(){const ratio=Math.max(280,innerWidth)/Math.max(280,innerHeight);if(ratio>=.9){SH=360;SW=Math.round(360*ratio)}else{SW=360;SH=Math.round(360/ratio)}aim={x:SW/2+80,y:SH/2};chunkCache.clear();configureCanvas()}
+function resizeGame(){const ratio=Math.max(280,innerWidth)/Math.max(280,innerHeight);if(ratio>=.9){SH=360;SW=Math.round(360*ratio)}else{SW=360;SH=Math.round(360/ratio)}aim={x:SW/2+80,y:SH/2};configureCanvas()}
 window.addEventListener("resize",resizeGame);resizeGame();
 const defaultInv=()=>({food:2,water:2,med:2,ammo:48,wood:1,cloth:1,scrap:1,circuit:0,fuel:0});
 function fresh(){
  state={hp:100,stamina:100,hunger:100,thirst:100,infection:0,daytime:0,kills:0,weapon:1,mag:8,inv:defaultInv(),looted:[],stage:"collect",defend:50,elapsed:0,weaponCooldown:0,reload:0,weather:0,weatherTime:120,shout:0};
  player={x:52*T+16,y:52*T+16,facing:0,walk:0,hurt:0};
- makeWorld();clearTower();zombies=[];particles=[];tracers=[];texts=[];chunkCache.clear();invalidateScene();spawnTimer=.85;clock=0;frame=0;screenShake=0;
+ makeWorld();clearTower();zombies=[];particles=[];tracers=[];texts=[];invalidateScene();spawnTimer=.85;clock=0;frame=0;screenShake=0;
 }
 fresh();
 function notify(msg,bad=false){const e=document.createElement("div");e.className="toast"+(bad?" bad":"");e.textContent=msg;$("toasts").prepend(e);setTimeout(()=>{e.remove()},4200)}
