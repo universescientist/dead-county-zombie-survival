@@ -12,3 +12,8 @@
 @media (pointer:coarse){#game{cursor:default}}
 #game-wrap{isolation:isolate;z-index:0}
 #hud,#mission,#nearby,#toasts,#hotbar,#mobile,#cornerBtns{z-index:4}
+
+/* GPU translation never relayouts the whole scene; only compositor transform changes on follow camera. */
+#world,#game{will-change:transform;contain:paint}
+#grain{opacity:.10}
+#game-wrap:after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;background:radial-gradient(ellipse at 51% 49%,transparent 24%,rgba(1,12,10,.24) 75%,rgba(0,6,8,.52) 100%)}

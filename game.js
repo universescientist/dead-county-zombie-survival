@@ -17,12 +17,12 @@ function walkVector(sx,sy){const world=screenDeltaToWorld(sx,sy);const length=Ma
 function diamond(c,x,y,w=IW,h=IH,color="#384939"){c.fillStyle=color;c.beginPath();c.moveTo(Math.round(x),Math.round(y-h));c.lineTo(Math.round(x+w),Math.round(y));c.lineTo(Math.round(x),Math.round(y+h));c.lineTo(Math.round(x-w),Math.round(y));c.closePath();c.fill()}
 function poly(c,pts,color,stroke){c.beginPath();c.moveTo(Math.round(pts[0].x),Math.round(pts[0].y));for(let i=1;i<pts.length;i++)c.lineTo(Math.round(pts[i].x),Math.round(pts[i].y));c.closePath();c.fillStyle=color;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke()}}
 
-const tiles=new Uint8Array(W*H),treeSet=new Set(),cars=[],containers=[],houses=[],debris=[],barriers=[],furniture=[];
+const tiles=new Uint8Array(W*H),treeSet=new Set(),cars=[],containers=[],houses=[],debris=[],barriers=[],furniture=[],streetProps=[];
 const at=(x,y)=>x<0||y<0||x>=W||y>=H?5:tiles[y*W+x];
 const set=(x,y,t)=>{if(x>=0&&y>=0&&x<W&&y<H)tiles[y*W+x]=t};
 let nextLoot=0;
 function makeWorld(){
-seed=78453321;tiles.fill(0);treeSet.clear();cars.length=0;containers.length=0;houses.length=0;debris.length=0;barriers.length=0;furniture.length=0;nextLoot=0;
+seed=78453321;tiles.fill(0);treeSet.clear();cars.length=0;containers.length=0;houses.length=0;debris.length=0;barriers.length=0;furniture.length=0;streetProps.length=0;nextLoot=0;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
  if(x<2||y<2||x>W-3||y>H-3){set(x,y,5);continue}
  if(x%24>=0&&x%24<5||y%24>=0&&y%24<5)set(x,y,1);
@@ -49,7 +49,15 @@ for(let i=0;i<46;i++){
  cars.push({x:x*T+16,y:y*T+16,rot:rand()<.5?0:1,col:rint(0,3),id:nextLoot++});
  containers.push({id:nextLoot++,x:x*T+16,y:y*T+16,type:"car",used:false});
 }
-for(let i=0;i<120;i++){let x=rint(3,W-4),y=rint(3,H-4);if(at(x,y)===0||at(x,y)===1)debris.push({x:x*T+10,y:y*T+8,type:rint(0,3)});}
+for(let i=0;i<360;i++){let x=rint(3,W-4),y=rint(3,H-4);if(at(x,y)===0||at(x,y)===1)debris.push({x:x*T+10,y:y*T+8,type:rint(0,3)});}
+for(let y=5;y<105;y+=13)for(let x=5;x<105;x+=13){
+ if(at(x,y)!==1||Math.hypot(x-52,y-52)<5)continue;
+ const pick=hash(x,y)%6;streetProps.push({x:x*T+16,y:y*T+16,type:pick<2?"lamp":pick<4?"barrel":pick===4?"sign":"hydrant",id:hash(y,x)});
+}
+// Opening scene is a small makeshift evacuation site, not two floating generic crates.
+for(const [dx,dy,type] of [[-4,1,"tent"],[4,-2,"fire"],[-5,-4,"lamp"],[5,3,"barrel"],[8,1,"sign"]]){
+ const x=52+dx,y=52+dy;if(at(x,y)===1||at(x,y)===0)streetProps.push({x:x*T+16,y:y*T+16,type,id:hash(x,y)});
+}
 containers.push({id:nextLoot++,x:53*T+16,y:53*T+16,type:"supply",used:false});
 containers.push({id:nextLoot++,x:50*T+16,y:50*T+16,type:"supply",used:false});
 }
@@ -89,12 +97,13 @@ function configureCanvas(){
 function positionBuffers(force=false){
  if(!anchor||!player)return;
  const b=$("game-wrap").getBoundingClientRect(),scale=Math.max(b.width/SW,b.height/SH),
- p=iso(player.x,player.y),left=(b.width-BW*scale)*.5+(anchor.x-p.x)*scale,
- top=(b.height-BH*scale)*.5+(anchor.y-p.y)*scale,
- key=Math.round(left*10)+":"+Math.round(top*10)+":"+Math.round(scale*10000);
+ p=iso(player.x,player.y),left=(b.width-BW*scale)*.5,
+ top=(b.height-BH*scale)*.5,
+ moveX=(anchor.x-p.x)*scale,moveY=(anchor.y-p.y)*scale,
+ key=Math.round(moveX*10)+":"+Math.round(moveY*10)+":"+Math.round(scale*10000);
  if(!force&&key===lastCamCSS)return;
  lastCamCSS=key;
- for(const c of [worldCanvas,canvas]){c.style.width=(BW*scale)+"px";c.style.height=(BH*scale)+"px";c.style.left=left+"px";c.style.top=top+"px"}
+ for(const c of [worldCanvas,canvas]){c.style.width=(BW*scale)+"px";c.style.height=(BH*scale)+"px";c.style.left=left+"px";c.style.top=top+"px";c.style.transform="translate3d("+moveX+"px,"+moveY+"px,0)"}
 }
 function screenOrigin(){return {x:anchor.x-BW/2,y:anchor.y-BH/2}}
 function screenPoint(wx,wy){const p=iso(wx,wy),origin=screenOrigin();return {x:Math.round(p.x-origin.x),y:Math.round(p.y-origin.y)}}
@@ -210,36 +219,47 @@ function updateHud(){
 }
 function px(c,x,y,w,h,col){c.fillStyle=col;c.fillRect(Math.round(x),Math.round(y),w,h)}
 function tileArt(c,x,y,t,tx,ty){
- const h=hash(tx,ty),colors=[
- ["#43543e","#495841","#3d523d","#455740"],
- ["#505956","#515955","#4a5350","#565e59"],
- ["#706856","#716858","#746c5e","#655e52"],
- ["#6d625b","#73645c","#776b62","#75675c"],
- ["#77644c","#817153","#78644b","#8b7459"],
- ["#254349","#28454a","#224249","#284047"]
- ],color=colors[t] ? colors[t][h%4] : "#43543f";
- diamond(c,x,y,IW+1,IH+1,color);
- if(t===1){
-  if(tx%24===2&&ty%24>5)diamond(c,x,y,1.8,5,"#a7a17d");
-  if(ty%24===2&&tx%24>5)diamond(c,x,y,7,1.2,"#a7a17d");
-  if(h%7===0)px(c,x-9,y-3,7,1,"#686a5d");
- }else if(t===0){if(h%3===0){px(c,x-7,y-3,2,4,"#64815a");px(c,x+6,y+1,2,2,"#53674b")}if(h%17===1)px(c,x+1,y-3,2,2,"#d9b777")}
- else if(t===2){if(h%4===0)px(c,x-5,y,9,1,"#867766");if(h%8===0)px(c,x+8,y+4,2,2,"#b0a27c")}
- else if(t===3){px(c,x-3,y-1,7,2,"#504d48")}
- else if(t===5){px(c,x-7,y-2,6,1,"#45656b")}
+ const h=hash(tx,ty);
+ const g=["#344b3a","#38513d","#324838","#3b513d"],road=["#31393a","#353e3d","#363e3f","#39413e"],
+ floor=["#605a4d","#676153","#6c6453","#665f50"],walls=["#6a5b51","#715f53","#746457","#796757"];
+ let color=t===0?g[h%4]:t===1?road[h%4]:t===2?floor[h%4]:t===3?walls[h%4]:t===4?"#776749":"#203c43";
+ diamond(c,x,y,IW+1,IH+1,"#202e2e");diamond(c,x,y-1,IW,IH,color);
+ // Diamond edge bevel makes walls and asphalt read as layered, not checkerboard.
+ if(t===0){
+  let a=hash(tx+7,ty*3),b=hash(tx*2,ty+18);
+  for(let i=0;i<5;i++){let xx=((a>>(i*5))%43)-21,yy=((b>>(i*5))%19)-9;if(Math.abs(xx)/32+Math.abs(yy)/16<.85){px(c,x+xx,y+yy,2,2,i%3?"#47644a":"#526b4b");if(i===2)px(c,x+xx+1,y+yy-2,1,3,"#77936b")}}
+  if(h%11===0){px(c,x-4,y-7,2,4,"#bdaf81");px(c,x+4,y+4,2,2,"#8b855c")}
+  if(h%7===0){px(c,x-13,y+1,8,3,"#293f34");px(c,x-12,y-2,3,2,"#547654")}
+ }else if(t===1){
+  for(let i=0;i<3;i++){let xx=((h>>(i*6))%38)-19,yy=((h>>(i*5+3))%15)-7;if(Math.abs(xx)/32+Math.abs(yy)/16<.8){px(c,x+xx,y+yy,2,1,"#495450");px(c,x+xx+2,y+yy+1,1,2,"#242e2e")}}
+  if((tx%24===2&&ty%24>5)||(ty%24===2&&tx%24>5)){
+   if(tx%24===2){poly(c,[{x:x-3,y:y-6},{x:x+2,y:y-4},{x:x+2,y:y+6},{x:x-3,y:y+4}],"#bfaf78")}
+   else{px(c,x-11,y-1,22,2,"#c1b480")}
+  }
+  if(h%17===0){px(c,x-13,y+2,17,1,"#202a2b");px(c,x-4,y+3,7,1,"#1d2627")}
+  if(h%23===1){px(c,x-17,y-2,6,2,"#705f51");px(c,x-14,y,4,2,"#77554f")}
+ }else if(t===2){
+  if(h%3===0){px(c,x-8,y-2,18,1,"#7c705e");px(c,x+5,y+4,12,1,"#554f46")}
+  if(h%19===2){px(c,x+4,y+1,2,2,"#a6a17d")}
+ }else if(t===3){
+  px(c,x-8,y-4,15,2,"#5a5149");px(c,x+3,y+2,8,2,"#958273");
+ }else if(t===4){
+  diamond(c,x,y-1,IW*.66,IH*.65,"#a2885e");px(c,x-2,y-5,5,6,"#4c3d2e");
+ }else{px(c,x-7,y-3,10,1,"#457277");}
 }
-
 function drawTree(c,x,y,h){
- px(c,x-11,y+3,25,5,"#0c19188a");
- px(c,x-4,y-28,9,35,"#493a2e");
- px(c,x+1,y-24,4,26,"#6a503b");
- diamond(c,x-3,y-35,24,15,h%2?"#284b38":"#2c523d");
- diamond(c,x+6,y-49,20,13,h%2?"#315c40":"#355f47");
- diamond(c,x-7,y-57,20,12,h%2?"#476f4d":"#416b49");
- px(c,x-13,y-63,11,4,"#5f8655");px(c,x+5,y-52,9,4,"#63865a");
- px(c,x-2,y-70,11,4,"#73916b");
+ px(c,x-17,y+3,36,5,"#091711a9");
+ px(c,x-4,y-27,10,32,"#453c2d");px(c,x+1,y-26,3,30,"#6b5740");
+ // Offset pixel-cluster canopy, shade on south-east face and rim light to the north.
+ diamond(c,x+4,y-37,27,15,"#183b31");
+ diamond(c,x-9,y-43,23,14,"#23543b");
+ diamond(c,x+10,y-51,22,13,"#2b6847");
+ diamond(c,x-5,y-57,27,13,"#356e49");
+ diamond(c,x+4,y-67,18,11,"#487b54");
+ px(c,x-18,y-55,13,5,"#3a7650");px(c,x-13,y-61,9,4,"#55865d");px(c,x+6,y-69,12,4,"#709768");
+ px(c,x-20,y-43,9,3,"#193d32");px(c,x+10,y-39,12,3,"#1c4837");
+ if(h%3===0){px(c,x-10,y-51,4,3,"#99a36a");px(c,x+7,y-59,3,2,"#bac076")}
 }
-
 const carCols=["#8b6958","#566b68","#65685b","#8a8070"];
 function drawCar(c,x,y,car){
  const color=carCols[car.col];c.save();c.translate(Math.round(x),Math.round(y));
@@ -281,6 +301,30 @@ function ground(camX,camY,width=SW,height=SH){
    let key=gx+","+gy,b=chunkCache.get(key)||makeChunk(gx,gy);
    ctx.drawImage(b,Math.round((gx-gy-1)*CH*IW-camX),Math.round((gx+gy)*CH*IH-camY));
  }
+}
+function drawStreetProp(c,x,y,item){
+ c.save();c.translate(Math.round(x),Math.round(y));let kind=item.type;
+ px(c,-14,2,30,4,"#1019149a");
+ if(kind==="lamp"){
+   px(c,-3,-75,7,78,"#374643");px(c,1,-73,3,73,"#819185");
+   px(c,-3,-80,26,5,"#4d5753");px(c,15,-81,11,8,"#b2a96d");px(c,16,-79,9,4,"#f3d98c");px(c,-8,-3,17,5,"#52665b");
+ }else if(kind==="barrel"){
+   diamond(c,0,-19,14,6,"#a0754c");px(c,-14,-19,28,16,"#69563d");px(c,-10,-16,20,4,"#4f694f");px(c,-9,-8,18,3,"#aa8050");px(c,-4,-17,8,2,"#b89b6d");
+ }else if(kind==="hydrant"){
+   px(c,-4,-21,10,20,"#913f3d");px(c,-8,-14,19,5,"#c2604a");px(c,-5,-24,12,5,"#e07c57");px(c,0,-28,3,7,"#e49a69");
+ }else if(kind==="sign"){
+   px(c,-3,-53,6,57,"#5c635d");px(c,-16,-58,33,19,"#9f6849");px(c,-14,-56,29,15,"#ddc994");px(c,-10,-53,22,2,"#8b5344");px(c,-10,-48,17,2,"#70554b");
+ }else if(kind==="fire"){
+   px(c,-20,-5,42,6,"#28261f");px(c,-17,-8,33,5,"#584838");
+   px(c,-6,-18,13,17,"#d8613f");px(c,-3,-25,9,16,"#f2ab4f");px(c,0,-21,5,15,"#fae496");
+ }else if(kind==="tent"){
+   poly(c,[{x:-33,y:-10},{x:0,y:2},{x:30,y:-10},{x:0,y:-49}],"#283f3c","#78896f");
+   poly(c,[{x:0,y:-49},{x:30,y:-10},{x:0,y:2}],"#485f4a");
+   poly(c,[{x:-33,y:-10},{x:0,y:-49},{x:0,y:2}],"#66775b");
+   px(c,-2,-26,4,27,"#25352f");
+   px(c,-38,-10,13,2,"#baa477");px(c,22,-11,13,2,"#baa477");
+ }
+ c.restore();
 }
 function drawFurniture(c,x,y,f){
  const dark=f.type==="bed"?"#585e57":f.type==="sofa"?"#4f665c":"#5a4638";
@@ -372,7 +416,18 @@ function zombieArt(c,z,x,y){
  c.drawImage(sprite,Math.round(x-36),Math.round(y-78));
  if(z.hp<z.max){px(c,x-12,y-43,24,3,"#271e1d");px(c,x-12,y-43,Math.ceil(24*z.hp/z.max),3,"#b75b54")}
 }
-function boxArt(c,x,y,used,type){px(c,x-12,y-2,25,17,"#111b1a70");px(c,x-12,y-13,23,18,used?"#56564a":type==="car"?"#726f5d":"#7c7053");px(c,x-10,y-15,20,5,used?"#666659":"#a8976b");px(c,x-2,y-11,4,14,"#3c3d31");if(!used){px(c,x+6,y-17,4,4,"#e0bb69");px(c,x+5,y-18,6,2,"#f4d391")}}
+function boxArt(c,x,y,used,type){
+ c.save();c.translate(Math.round(x),Math.round(y));
+ poly(c,[{x:-20,y:-3},{x:1,y:5},{x:20,y:-3},{x:0,y:-12}],"#0b1815a0");
+ const tone=type==="supply"?"#94784d":type==="car"?"#68736c":"#82674d";
+ poly(c,[{x:-16,y:-20},{x:0,y:-12},{x:17,y:-21},{x:0,y:-30}],used?"#555c50":tone,"#312a25");
+ poly(c,[{x:-16,y:-20},{x:0,y:-12},{x:0,y:3},{x:-16,y:-5}],"#5a4b36");
+ poly(c,[{x:0,y:-12},{x:17,y:-21},{x:17,y:-6},{x:0,y:3}],"#413b30");
+ poly(c,[{x:-8,y:-25},{x:0,y:-22},{x:8,y:-26},{x:0,y:-29}],"#b39c67");
+ px(c,-11,-16,3,12,"#b7a37c");px(c,9,-20,3,13,"#a58c5e");
+ if(!used){px(c,-2,-35,4,5,"#f2d288");px(c,-1,-37,3,2,"#fff0b5")}
+ c.restore();
+}
 function towerArt(c,x,y){px(c,x-30,y+17,60,13,"#252a26");px(c,x-27,y+14,54,5,"#7a775c");px(c,x-4,y-83,8,99,"#9b9a83");for(let j=0;j<6;j++){let yy=y-70+j*13;px(c,x-18,yy,36,4,"#92978a");px(c,x-17,yy+4,3,11,"#505f59");px(c,x+14,yy+4,3,11,"#505f59");px(c,x-14+j%2*5,yy+4,29,2,"#767c75")}px(c,x-21,y+2,42,16,"#526b61");px(c,x-11,y-3,19,16,"#a3aa88");px(c,x-6,y+1,10,7,"#2c423c");px(c,x-2,y-94,4,16,"#b1b6a1");px(c,x-5,y-88,11,4,"#a8ada0");px(c,x-5,y-100,10,9,state.stage==="defend"?"#d96b5f":"#a94943")}
 function drawMinimap(){
  const sx=mc.width/W,sy=mc.height/H;mctx.fillStyle="#1b2b26";mctx.fillRect(0,0,130,130);
@@ -390,11 +445,13 @@ function paintStatic(){
  for(const c of containers){if(c.used)continue;const p=screenPoint(c.x,c.y);if(insideBuffer(p,45))candidates.push({depth:iso(c.x,c.y).y,kind:"box",p,item:c})}
  for(const b of barriers){const p=screenPoint(b.x,b.y);if(insideBuffer(p,45))candidates.push({depth:iso(b.x,b.y).y,kind:"barrier",p})}
  for(const f of furniture){const p=screenPoint(f.x,f.y);if(insideBuffer(p,50))candidates.push({depth:iso(f.x,f.y).y,kind:"furniture",p,f})}
+ for(const it of streetProps){const p=screenPoint(it.x,it.y);if(insideBuffer(p,110))candidates.push({depth:iso(it.x,it.y).y,kind:"street",p,item:it})}
  for(const h of houses){const center=screenPoint((h.x+h.w/2)*T,(h.y+h.h/2)*T);if(insideBuffer(center,Math.max(h.w,h.h)*IW+95))candidates.push({depth:iso((h.x+h.w)*T,(h.y+h.h)*T).y,kind:"house",h})}
  const tp=screenPoint(tower.x,tower.y);if(insideBuffer(tp,110))candidates.push({depth:iso(tower.x,tower.y).y,kind:"tower",p:tp});
  candidates.sort((a,b)=>a.depth-b.depth);
  for(const o of candidates){const{kind,p}=o;
   if(kind==="tree")drawTree(ctx,p.x,p.y,o.seed);
+  else if(kind==="street")drawStreetProp(ctx,p.x,p.y,o.item);
   else if(kind==="car")drawCar(ctx,p.x,p.y,o.car);
   else if(kind==="box")boxArt(ctx,p.x,p.y,false,o.item.type);
   else if(kind==="furniture")drawFurniture(ctx,p.x,p.y,o.f);
@@ -484,5 +541,5 @@ window.addEventListener("blur",()=>{if(started&&!modalActive){paused=true;save()
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&started){paused=true;save()}});
 if(localStorage.getItem(SAVE))$("continueBtn").hidden=false;
 updateHud();drawMinimap();requestAnimationFrame(loop);
-window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
+window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
 })();
