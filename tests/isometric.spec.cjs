@@ -1,0 +1,33 @@
+const {test,expect}=require('@playwright/test');
+test('projeção isométrica 2:1 e inversa matemática',async({page})=>{
+ const failures=[];page.on('pageerror',e=>failures.push(e.message));
+ await page.goto('http://127.0.0.1:8765/');
+ const points=await page.evaluate(()=>{const d=window.DeadCountyDebug;return {east:d.iso(32,0),south:d.iso(0,32),back:d.inverseIso(...Object.values(d.iso(123,71))),vector:d.walkVector(1,0)}});
+ expect(points.east.x).toBe(32);expect(points.east.y).toBe(16);
+ expect(points.south.x).toBe(-32);expect(points.south.y).toBe(16);
+ expect(points.back.x).toBeCloseTo(123,5);expect(points.back.y).toBeCloseTo(71,5);
+ expect(points.vector.x).toBeGreaterThan(0);expect(points.vector.y).toBeLessThan(0);
+ expect(failures).toEqual([]);
+});
+test('câmera move no plano da tela, casas ocluem e interiores permanecem',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:8765/');
+ await page.locator('#startBtn').click();
+ const first=await page.evaluate(()=>{let d=window.DeadCountyDebug;return {p:d.getState().player,cache:d.getMetrics().chunkCache}});
+ await page.keyboard.down('d');
+ await page.evaluate(()=>window.DeadCountyDebug.tick(30));
+ await page.keyboard.up('d');
+ const next=await page.evaluate(()=>{let d=window.DeadCountyDebug;return {p:d.getState().player,cache:d.getMetrics().chunkCache}});
+ const before=await page.evaluate(p=>window.DeadCountyDebug.iso(p.x,p.y),first.p);
+ const after=await page.evaluate(p=>window.DeadCountyDebug.iso(p.x,p.y),next.p);
+ expect(after.x).toBeGreaterThan(before.x);
+ expect(next.cache).toBeGreaterThan(0);
+ expect(next.cache).toBeLessThanOrEqual(36);
+ await page.evaluate(()=>window.DeadCountyDebug.teleport(60,62));
+ await page.evaluate(()=>window.DeadCountyDebug.tick(2));
+ await page.screenshot({path:'test-results/isometric-house-interior.png',fullPage:true});
+ await page.evaluate(()=>window.DeadCountyDebug.teleport(52,52));
+ await page.evaluate(()=>window.DeadCountyDebug.tick(2));
+ await page.screenshot({path:'test-results/isometric-street.png',fullPage:true});
+ expect(errors).toEqual([]);
+});
