@@ -10,3 +10,5 @@
 #night-layer{z-index:2;position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 50%,#07121b 1%,#040e18 100%)}
 #grain{z-index:3}
 @media (pointer:coarse){#game{cursor:default}}
+#game-wrap{isolation:isolate;z-index:0}
+#hud,#mission,#nearby,#toasts,#hotbar,#mobile,#cornerBtns{z-index:4}
