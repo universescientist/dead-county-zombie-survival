@@ -17,12 +17,12 @@ function walkVector(sx,sy){const world=screenDeltaToWorld(sx,sy);const length=Ma
 function diamond(c,x,y,w=IW,h=IH,color="#384939"){c.fillStyle=color;c.beginPath();c.moveTo(Math.round(x),Math.round(y-h));c.lineTo(Math.round(x+w),Math.round(y));c.lineTo(Math.round(x),Math.round(y+h));c.lineTo(Math.round(x-w),Math.round(y));c.closePath();c.fill()}
 function poly(c,pts,color,stroke){c.beginPath();c.moveTo(Math.round(pts[0].x),Math.round(pts[0].y));for(let i=1;i<pts.length;i++)c.lineTo(Math.round(pts[i].x),Math.round(pts[i].y));c.closePath();c.fillStyle=color;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke()}}
 
-const tiles=new Uint8Array(W*H),treeSet=new Set(),cars=[],containers=[],houses=[],debris=[],barriers=[];
+const tiles=new Uint8Array(W*H),treeSet=new Set(),cars=[],containers=[],houses=[],debris=[],barriers=[],furniture=[];
 const at=(x,y)=>x<0||y<0||x>=W||y>=H?5:tiles[y*W+x];
 const set=(x,y,t)=>{if(x>=0&&y>=0&&x<W&&y<H)tiles[y*W+x]=t};
 let nextLoot=0;
 function makeWorld(){
-seed=78453321;tiles.fill(0);treeSet.clear();cars.length=0;containers.length=0;houses.length=0;debris.length=0;barriers.length=0;nextLoot=0;
+seed=78453321;tiles.fill(0);treeSet.clear();cars.length=0;containers.length=0;houses.length=0;debris.length=0;barriers.length=0;furniture.length=0;nextLoot=0;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
  if(x<2||y<2||x>W-3||y>H-3){set(x,y,5);continue}
  if(x%24>=0&&x%24<5||y%24>=0&&y%24<5)set(x,y,1);
@@ -31,6 +31,9 @@ for(let gy=7;gy<103;gy+=24)for(let gx=7;gx<103;gx+=24){
  const bx=gx+rint(0,2),by=gy+rint(0,2),bw=rint(9,12),bh=rint(8,11),doorX=bx+Math.floor(bw/2);
  if(bx+bw>W-4||by+bh>H-4)continue;
  houses.push({x:bx,y:by,w:bw,h:bh,door:doorX});
+ furniture.push({x:(bx+2)*T+16,y:(by+3)*T+16,type:"bed",id:hash(bx,by)});
+ furniture.push({x:(bx+bw-3)*T+16,y:(by+bh-3)*T+16,type:"table",id:hash(by,bx)});
+ if((bx+by)%2===0)furniture.push({x:(bx+4)*T+16,y:(by+3)*T+16,type:"sofa",id:hash(by+1,bx)});
  for(let y=by;y<by+bh;y++)for(let x=bx;x<bx+bw;x++)set(x,y,(y===by||y===by+bh-1||x===bx||x===bx+bw-1)?3:2);
  set(doorX,by+bh-1,4);set(doorX-1,by+bh-1,4);
  containers.push({id:nextLoot++,x:(bx+3+rint(0,bw-7))*T+16,y:(by+3+rint(0,bh-7))*T+16,type:"cabinet",used:false});
@@ -98,6 +101,7 @@ function end(win){started=false;paused=true;modalActive=true;if(win){state.stage
 function solidPoint(x,y){const tx=Math.floor(x/T),ty=Math.floor(y/T),tile=at(tx,ty);if(tile===3||tile===5||treeSet.has(ty*W+tx))return true;
  for(const c of cars)if(Math.abs(c.x-x)<(c.rot?12:21)&&Math.abs(c.y-y)<(c.rot?21:12))return true;
  for(const b of barriers)if(Math.abs(b.x-x)<14&&Math.abs(b.y-y)<14)return true;
+ for(const f of furniture)if(Math.abs(f.x-x)<12&&Math.abs(f.y-y)<12)return true;
  return false}
 function canWalk(x,y,r=9){return !solidPoint(x-r,y-r)&&!solidPoint(x+r,y-r)&&!solidPoint(x-r,y+r)&&!solidPoint(x+r,y+r)}
 function slideMove(obj,dx,dy,r=9){if(canWalk(obj.x+dx,obj.y,r))obj.x+=dx;if(canWalk(obj.x,obj.y+dy,r))obj.y+=dy}
@@ -252,13 +256,26 @@ function ground(camX,camY){
    ctx.drawImage(b,Math.round((gx-gy-1)*CH*IW-camX),Math.round((gx+gy)*CH*IH-camY));
  }
 }
+function drawFurniture(c,x,y,f){
+ const dark=f.type==="bed"?"#585e57":f.type==="sofa"?"#4f665c":"#5a4638";
+ const top=f.type==="bed"?"#aab0a1":f.type==="sofa"?"#788c72":"#957a57";
+ c.save();c.translate(Math.round(x),Math.round(y));
+ poly(c,[{x:-22,y:-4},{x:0,y:7},{x:21,y:-3},{x:-1,y:-14}],dark);
+ poly(c,[{x:-22,y:-16},{x:0,y:-5},{x:21,y:-15},{x:-1,y:-26}],top,"#363d37");
+ poly(c,[{x:0,y:-5},{x:21,y:-15},{x:21,y:-3},{x:0,y:7}],dark);
+ poly(c,[{x:-22,y:-16},{x:0,y:-5},{x:0,y:7},{x:-22,y:-4}],"#665a4d");
+ if(f.type==="bed"){px(c,-8,-17,15,5,"#d7c8a3");px(c,-16,-16,8,3,"#c9c8b0")}
+ else if(f.type==="table"){px(c,-16,-29,4,15,"#574635");px(c,13,-21,5,15,"#574635");px(c,-8,-24,8,3,"#c0b17d")}
+ else{px(c,-9,-29,21,7,"#546e5b");px(c,-15,-22,27,6,"#849681")}
+ c.restore();
+}
 function drawHouse(c,house,camX,camY){
  const x=house.x*T,y=house.y*T,x2=x+house.w*T,y2=y+house.h*T,height=44;
  const p0=iso(x,y),p1=iso(x2,y),p2=iso(x2,y2),p3=iso(x,y2);
  for(const p of [p0,p1,p2,p3]){p.x-=camX;p.y-=camY}
  const inside=player.x>x&&player.x<x2&&player.y>y&&player.y<y2;
- const near=player.x>x-48&&player.x<x2+48&&player.y>y-48&&player.y<y2+48;
- c.save();c.globalAlpha=inside?.13:near?.30:1;
+ const near=player.x>x-152&&player.x<x2+152&&player.y>y-152&&player.y<y2+152;
+ c.save();c.globalAlpha=inside?.11:near?.21:1;
  poly(c,[{x:p1.x,y:p1.y-height},{x:p2.x,y:p2.y-height},p2,p1], "#625850","#333931");
  poly(c,[{x:p3.x,y:p3.y-height},{x:p2.x,y:p2.y-height},p2,p3],"#82715f","#3a4039");
  // Side windows in an evenly spaced repeating rhythm.
@@ -326,6 +343,7 @@ function render(){
  for(const car of cars){const p=onScreen(car.x,car.y);if(visible(p,80))renderables.push({depth:iso(car.x,car.y).y,kind:"car",p,car})}
  for(const c of containers)if(!c.used){const p=onScreen(c.x,c.y);if(visible(p,55))renderables.push({depth:iso(c.x,c.y).y,kind:"box",p,item:c})}
  for(const b of barriers){const p=onScreen(b.x,b.y);if(visible(p,55))renderables.push({depth:iso(b.x,b.y).y,kind:"barrier",p})}
+ for(const f of furniture){const p=onScreen(f.x,f.y);if(visible(p,55))renderables.push({depth:iso(f.x,f.y).y,kind:"furniture",p,f})}
  for(const h of houses){const corner=iso((h.x+h.w)*T,(h.y+h.h)*T);const mid=onScreen((h.x+h.w/2)*T,(h.y+h.h/2)*T);
    if(visible(mid,Math.max(h.w,h.h)*IW+80))renderables.push({depth:corner.y,kind:"house",house:h})}
  let towerPoint=onScreen(tower.x,tower.y);
@@ -339,6 +357,7 @@ function render(){
   if(kind==="tree"){drawTree(ctx,p.x,p.y,object.h);continue}
   if(kind==="car"){drawCar(ctx,p.x,p.y,object.car);continue}
   if(kind==="box"){boxArt(ctx,p.x,p.y,object.item.used,object.item.type);continue}
+  if(kind==="furniture"){drawFurniture(ctx,p.x,p.y,object.f);continue}
   if(kind==="barrier"){px(ctx,p.x-15,p.y-16,30,15,"#47392c");px(ctx,p.x-13,p.y-19,27,5,"#b2905e");px(ctx,p.x-13,p.y-10,27,5,"#95794e");px(ctx,p.x-10,p.y-21,5,26,"#59442e");continue}
   if(kind==="tower"){ctx.strokeStyle=state.stage==="defend"?"#e8907b":"#d9c475";ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y+2,44+Math.sin(clock*2)*3,20,0,0,TAU);ctx.stroke();towerArt(ctx,p.x,p.y);continue}
   if(kind==="player"){survivor(ctx,p.x,p.y,player.facing,player.walk,player.hurt);continue}
@@ -347,7 +366,7 @@ function render(){
  for(const part of particles){let q=onScreen(part.x,part.y);if(!visible(q,10))continue;ctx.globalAlpha=clamp(part.life/part.max,0,1);px(ctx,q.x,q.y,part.size,part.size,part.color)}ctx.globalAlpha=1;
  for(const t of tracers){let q=onScreen(t.x,t.y),e=onScreen(t.x2,t.y2);ctx.strokeStyle="#ffe4a1";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(Math.round(q.x),Math.round(q.y-18));ctx.lineTo(Math.round(e.x),Math.round(e.y-18));ctx.stroke()}
  ctx.font="bold 10px monospace";ctx.textAlign="center";for(const t of texts){let q=onScreen(t.x,t.y);ctx.globalAlpha=t.life;ctx.fillStyle="#0c1311";ctx.fillText(t.msg,q.x+1,q.y-35);ctx.fillStyle=t.col;ctx.fillText(t.msg,q.x,q.y-36)}ctx.globalAlpha=1;
- const minutes=(360+state.elapsed*3)%1440,hour=minutes/60;let darkness=hour>=19||hour<=5?.52:hour>=17?(hour-17)*.25:hour<=7?(7-hour)*.26:0;
+ const minutes=(360+state.elapsed*3)%1440,hour=minutes/60;let darkness=hour>=19||hour<=5?.52:hour>=17?(hour-17)*.25:hour<=7?(7-hour)*.13:0;
  if(darkness>0){ctx.fillStyle="rgba(5,12,22,"+darkness+")";ctx.fillRect(0,0,SW,SH);const radius=160,light=ctx.createRadialGradient(SW/2,SH/2,6,SW/2,SH/2,radius);
  light.addColorStop(0,"rgba(255,220,146,.20)");light.addColorStop(1,"rgba(255,220,146,0)");ctx.fillStyle=light;ctx.fillRect(SW/2-radius,SH/2-radius,radius*2,radius*2)}
  if(state.weather&&started){ctx.strokeStyle="#a9b8b653";ctx.lineWidth=1;for(let i=0;i<80;i++){let x=(hash(i,23)+Math.floor(clock*130))%SW,y=(hash(i,41)+Math.floor(clock*280))%SH;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-6,y+11);ctx.stroke()}}
@@ -393,5 +412,5 @@ window.addEventListener("blur",()=>{if(started&&!modalActive){paused=true;save()
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&started){paused=true;save()}});
 if(localStorage.getItem(SAVE))$("continueBtn").hidden=false;
 updateHud();drawMinimap();requestAnimationFrame(loop);
-window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...ctx.getImageData(x,y,1,1).data],getMetrics:()=>({chunkCache:chunkCache.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
+window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...ctx.getImageData(x,y,1,1).data],getMetrics:()=>({chunkCache:chunkCache.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
 })();
