@@ -18,6 +18,19 @@ function diamond(c,x,y,w=IW,h=IH,color="#384939"){c.fillStyle=color;c.beginPath(
 function poly(c,pts,color,stroke){c.beginPath();c.moveTo(Math.round(pts[0].x),Math.round(pts[0].y));for(let i=1;i<pts.length;i++)c.lineTo(Math.round(pts[i].x),Math.round(pts[i].y));c.closePath();c.fillStyle=color;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke()}}
 
 const tiles=new Uint8Array(W*H),treeSet=new Set(),cars=[],containers=[],houses=[],debris=[],barriers=[],furniture=[],streetProps=[];
+const collisionBuckets=new Map();let solidLookups=0;
+function indexCollider(obj,halfX,halfY){
+ for(let y=Math.floor((obj.y-halfY)/T);y<=Math.floor((obj.y+halfY)/T);y++)for(let x=Math.floor((obj.x-halfX)/T);x<=Math.floor((obj.x+halfX)/T);x++){
+ const k=y*W+x;if(!collisionBuckets.has(k))collisionBuckets.set(k,[]);
+ collisionBuckets.get(k).push({obj,hx:halfX,hy:halfY});
+ }
+}
+function indexStaticCollisions(){
+ collisionBuckets.clear();
+ for(const car of cars)indexCollider(car,car.rot?12:21,car.rot?21:12);
+ for(const furn of furniture)indexCollider(furn,12,12);
+ for(const barrier of barriers)indexCollider(barrier,14,14);
+}
 const at=(x,y)=>x<0||y<0||x>=W||y>=H?5:tiles[y*W+x];
 const set=(x,y,t)=>{if(x>=0&&y>=0&&x<W&&y<H)tiles[y*W+x]=t};
 let nextLoot=0;
@@ -60,6 +73,7 @@ for(const [dx,dy,type] of [[-4,1,"tent"],[4,-2,"fire"],[-5,-4,"lamp"],[5,3,"barr
 }
 containers.push({id:nextLoot++,x:53*T+16,y:53*T+16,type:"supply",used:false});
 containers.push({id:nextLoot++,x:50*T+16,y:50*T+16,type:"supply",used:false});
+indexStaticCollisions();
 }
 // Fixed mission point beside a major east-west road
 const tower={x:99*T+16,y:25*T+16};
@@ -117,13 +131,13 @@ const defaultInv=()=>({food:2,water:2,med:2,ammo:48,wood:1,cloth:1,scrap:1,circu
 function fresh(){
  state={hp:100,stamina:100,hunger:100,thirst:100,infection:0,daytime:0,kills:0,weapon:1,mag:8,inv:defaultInv(),looted:[],stage:"collect",defend:50,elapsed:0,weaponCooldown:0,reload:0,weather:0,weatherTime:120,shout:0};
  player={x:52*T+16,y:52*T+16,facing:0,walk:0,hurt:0};
- makeWorld();clearTower();zombies=[];particles=[];tracers=[];texts=[];chunkCache.clear();invalidateScene();spawnTimer=2;clock=0;frame=0;screenShake=0;
+ makeWorld();clearTower();zombies=[];particles=[];tracers=[];texts=[];chunkCache.clear();invalidateScene();spawnTimer=.85;clock=0;frame=0;screenShake=0;
 }
 fresh();
 function notify(msg,bad=false){const e=document.createElement("div");e.className="toast"+(bad?" bad":"");e.textContent=msg;$("toasts").prepend(e);setTimeout(()=>{e.remove()},4200)}
 function sound(freq=280,dur=.1,type="square",vol=.025){if(!audioEnabled)return;try{audioCtx??=new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.setValueAtTime(freq,audioCtx.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(60,freq*.55),audioCtx.currentTime+dur);g.gain.setValueAtTime(vol,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur+.01)}catch{}}
 function save(){if(!started||state.hp<=0||state.stage==="won")return;try{localStorage.setItem(SAVE,JSON.stringify({v:1,state,player:{x:player.x,y:player.y,facing:player.facing},barriers,when:Date.now()}))}catch{}}
-function load(){try{const a=JSON.parse(localStorage.getItem(SAVE)||"null");if(!a||a.v!==1||!a.state)return false;fresh();state={...state,...a.state,inv:{...defaultInv(),...a.state.inv}};player={...player,...a.player};for(const c of containers)c.used=state.looted.includes(c.id);barriers.push(...(a.barriers||[]));invalidateScene();return true}catch{return false}}
+function load(){try{const a=JSON.parse(localStorage.getItem(SAVE)||"null");if(!a||a.v!==1||!a.state)return false;fresh();state={...state,...a.state,inv:{...defaultInv(),...a.state.inv}};player={...player,...a.player};for(const c of containers)c.used=state.looted.includes(c.id);barriers.push(...(a.barriers||[]));indexStaticCollisions();invalidateScene();return true}catch{return false}}
 function hideModals(){for(const id of ["modal","inventoryModal","craftModal","endModal"])$(id).classList.remove("show");modalActive=false;paused=false;canvas.focus()}
 function start(loadExisting=false){if(!loadExisting||!load())fresh();started=true;hideModals();last=performance.now();notify("SINAL RECEBIDO. SOBREVIVA. ENCONTRE A TORRE.");notify("VAS-CULHE AS CASAS E COLETE SUPRIMENTOS.");save();}
 function end(win){started=false;paused=true;modalActive=true;if(win){state.stage="won";invalidateScene();try{localStorage.removeItem(SAVE)}catch{}}else try{localStorage.removeItem(SAVE)}catch{}
@@ -133,18 +147,24 @@ function end(win){started=false;paused=true;modalActive=true;if(win){state.stage
  $("endStats").innerHTML="<span>ABATES <b>"+state.kills+"</b></span><span>TEMPO <b>"+Math.floor(state.elapsed/60)+"m "+Math.floor(state.elapsed%60)+"s</b></span>";
  $("endModal").classList.add("show");sound(win?540:120,.6,"sawtooth",.04);
 }
-function solidPoint(x,y){const tx=Math.floor(x/T),ty=Math.floor(y/T),tile=at(tx,ty);if(tile===3||tile===5||treeSet.has(ty*W+tx))return true;
- for(const c of cars)if(Math.abs(c.x-x)<(c.rot?12:21)&&Math.abs(c.y-y)<(c.rot?21:12))return true;
- for(const b of barriers)if(Math.abs(b.x-x)<14&&Math.abs(b.y-y)<14)return true;
- for(const f of furniture)if(Math.abs(f.x-x)<12&&Math.abs(f.y-y)<12)return true;
- return false}
+function solidPoint(x,y){
+ solidLookups++;const tx=Math.floor(x/T),ty=Math.floor(y/T),tile=at(tx,ty);
+ if(tile===3||tile===5||treeSet.has(ty*W+tx))return true;
+ const items=collisionBuckets.get(ty*W+tx);if(!items)return false;
+ for(const {obj,hx,hy} of items)if(Math.abs(obj.x-x)<hx&&Math.abs(obj.y-y)<hy)return true;
+ return false;
+}
 function canWalk(x,y,r=9){return !solidPoint(x-r,y-r)&&!solidPoint(x+r,y-r)&&!solidPoint(x-r,y+r)&&!solidPoint(x+r,y+r)}
 function slideMove(obj,dx,dy,r=9){if(canWalk(obj.x+dx,obj.y,r))obj.x+=dx;if(canWalk(obj.x,obj.y+dy,r))obj.y+=dy}
 function addParticle(x,y,col,n=7,speed=60){for(let i=0;i<n;i++){const a=rand()*TAU,sp=rand()*speed+8;particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rand()*.36+.18,max:.6,color:col,size:rint(1,3)})}}
 function floater(x,y,msg,col="#fff"){texts.push({x,y,msg,col,life:1,vy:-25})}
-function spawnZombie(x,y,kind){if(!canWalk(x,y,11))return;zombies.push({x,y,hp:kind?68:45,max:kind?68:45,kind,attack:rand()*.8,walk:rand()*10,dir:rand()*TAU,noise:0,stun:0})}
+function spawnZombie(x,y,kind){if(!canWalk(x,y,11))return false;zombies.push({x,y,hp:kind?68:45,max:kind?68:45,kind,attack:rand()*.8,walk:rand()*10,dir:rand()*TAU,noise:0,stun:0});return true}
 function spawnWave(dt){spawnTimer-=dt;if(spawnTimer>0||zombies.length>=65)return;spawnTimer=(state.stage==="defend"?.6:2.4)-Math.min(.9,state.elapsed/250);let amount=state.stage==="defend"?3:rint(1,2);
- for(let i=0;i<amount;i++){let angle=rand()*TAU,range=230+rand()*170;let x=clamp(player.x+Math.cos(angle)*range,85,W*T-85),y=clamp(player.y+Math.sin(angle)*range,85,H*T-85);spawnZombie(x,y,rand()<(state.elapsed>130?.27:.12)?1:0)}
+ for(let i=0;i<amount;i++){let ok=false;for(let attempt=0;attempt<32&&!ok;attempt++){
+ let angle=rand()*TAU,range=230+rand()*170;
+ let x=clamp(player.x+Math.cos(angle)*range,85,W*T-85),y=clamp(player.y+Math.sin(angle)*range,85,H*T-85);
+ ok=spawnZombie(x,y,rand()<(state.elapsed>130?.27:.12)?1:0);
+ }}
 }
 function damage(amount,infectChance=0){if(player.hurt>0)return;state.hp=clamp(state.hp-amount,0,100);player.hurt=.55;screenShake=5;floater(player.x,player.y-26,"-"+Math.ceil(amount),"#ff8580");sound(110,.14,"sawtooth",.05);if(rand()<infectChance)state.infection=clamp(state.infection+3,0,100);if(state.hp<=0)end(false)}
 function hitZombie(z,damage,angle){z.hp-=damage;z.stun=.2;z.x+=Math.cos(angle)*14;z.y+=Math.sin(angle)*14;addParticle(z.x,z.y,"#963e43",9,105);floater(z.x,z.y-20,String(Math.floor(damage)),"#f3e7b8");screenShake=2;if(z.hp<=0){state.kills++;addParticle(z.x,z.y,"#57272c",13,80);if(rand()<.16)state.inv.scrap++;zombies.splice(zombies.indexOf(z),1);sound(85,.11,"triangle")}}
@@ -179,7 +199,7 @@ function craft(r){const i=state.inv;if(Object.entries(r.req).some(([k,v])=>(i[k]
  if(r.action==="barrier"){let x=player.x+Math.cos(player.facing)*38,y=player.y+Math.sin(player.facing)*38;if(!canWalk(x,y,17))return notify("ESPAÇO BLOQUEADO.",true)}
  Object.entries(r.req).forEach(([k,v])=>i[k]-=v);
  if(r.out)Object.entries(r.out).forEach(([k,v])=>i[k]=(i[k]||0)+v);
- if(r.action==="barrier"){barriers.push({x:Math.round((player.x+Math.cos(player.facing)*38)/T)*T+16,y:Math.round((player.y+Math.sin(player.facing)*38)/T)*T+16,hp:90});invalidateScene()}
+ if(r.action==="barrier"){barriers.push({x:Math.round((player.x+Math.cos(player.facing)*38)/T)*T+16,y:Math.round((player.y+Math.sin(player.facing)*38)/T)*T+16,hp:90});indexCollider(barriers[barriers.length-1],14,14);invalidateScene()}
  sound(420,.2,"square");notify("FABRICADO: "+r.name);renderCraft();save();
 }
 function setWeapon(i){state.weapon=i;document.querySelectorAll("[data-slot]").forEach(b=>b.classList.toggle("active",Number(b.dataset.slot)===i));sound(280,.06)}
@@ -541,5 +561,5 @@ window.addEventListener("blur",()=>{if(started&&!modalActive){paused=true;save()
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&started){paused=true;save()}});
 if(localStorage.getItem(SAVE))$("continueBtn").hidden=false;
 updateHud();drawMinimap();requestAnimationFrame(loop);
-window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
+window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,solidLookups,collisionBuckets:collisionBuckets.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
 })();
