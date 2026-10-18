@@ -25,8 +25,33 @@ function indexCollider(obj,halfX,halfY){
  collisionBuckets.get(k).push({obj,hx:halfX,hy:halfY});
  }
 }
+const FLOW_DIRS=[[1,0],[-1,0],[0,1],[0,-1]];const flowDistances=new Uint16Array(W*H);let lastFlowCell=-1,flowClock=0,flowBuilds=0;
+function refreshFlow(){
+ const tx=clamp(Math.floor(player.x/T),1,W-2),ty=clamp(Math.floor(player.y/T),1,H-2);
+ const goal=ty*W+tx;flowDistances.fill(65535);flowDistances[goal]=0;
+ const queue=new Int32Array(W*H);let front=0,back=0;queue[back++]=goal;
+ const xmin=Math.max(1,tx-24),xmax=Math.min(W-2,tx+24),ymin=Math.max(1,ty-24),ymax=Math.min(H-2,ty+24);
+ while(front<back){
+  const idx=queue[front++],x=idx%W,y=(idx/W)|0,cost=flowDistances[idx]+1;
+  for(const [ax,ay] of FLOW_DIRS){
+   const nx=x+ax,ny=y+ay;if(nx<xmin||nx>xmax||ny<ymin||ny>ymax)continue;
+   const n=ny*W+nx;if(flowDistances[n]!==65535||at(nx,ny)===3||at(nx,ny)===5||treeSet.has(n))continue;
+   if(!canWalk(nx*T+16,ny*T+16,8))continue;
+   flowDistances[n]=cost;queue[back++]=n;
+  }
+ }
+ lastFlowCell=goal;flowClock=1.15;flowBuilds++;
+}
+function flowAngle(z){
+ const tx=Math.floor(z.x/T),ty=Math.floor(z.y/T);if(tx<2||ty<2||tx>=W-2||ty>=H-2)return null;
+ const k=ty*W+tx,base=flowDistances[k];if(base===65535)return null;
+ let best=base,target=null;
+ for(const [dx,dy] of FLOW_DIRS){
+  const ni=(ty+dy)*W+tx+dx;if(flowDistances[ni]<best){best=flowDistances[ni];target={x:(tx+dx+.5)*T,y:(ty+dy+.5)*T}}}
+ return target?Math.atan2(target.y-z.y,target.x-z.x):null;
+}
 function indexStaticCollisions(){
- collisionBuckets.clear();
+ collisionBuckets.clear();flowClock=0;lastFlowCell=-1;
  for(const car of cars)indexCollider(car,car.rot?12:21,car.rot?21:12);
  for(const furn of furniture)indexCollider(furn,12,12);
  for(const barrier of barriers)indexCollider(barrier,14,14);
@@ -216,8 +241,11 @@ function update(dt){clock+=dt;frame++;state.elapsed+=dt;state.weaponCooldown=Mat
  state.weatherTime-=dt;if(state.weatherTime<=0){state.weather=rand()<.38?1:0;state.weatherTime=rand()*80+80;notify(state.weather?"CHUVA SE APROXIMANDO.":"O CÉU ESTÁ LIMPANDO.")}
  if(state.stage==="defend"){state.defend-=dt;if(state.defend<=0){end(true);return}}
  spawnWave(dt);
+ flowClock-=dt;
+ const flowCell=Math.floor(player.y/T)*W+Math.floor(player.x/T);
+ if((flowClock<=0||lastFlowCell!==flowCell)&&zombies.length)refreshFlow();
  for(const z of [...zombies]){z.attack=Math.max(0,z.attack-dt);z.stun=Math.max(0,z.stun-dt);const d=dist(player,z);if(d>1280){zombies.splice(zombies.indexOf(z),1);continue}
- let speed=z.kind?87:53,sense=z.kind?520:360;let angle=z.dir;if(d<sense||state.shout>0&&d<720){angle=Math.atan2(player.y-z.y,player.x-z.x);z.dir=angle}
+ let speed=z.kind?87:53,sense=z.kind?520:360;let angle=z.dir;if(d<sense||state.shout>0&&d<720){angle=d>90?(flowAngle(z)??Math.atan2(player.y-z.y,player.x-z.x)):Math.atan2(player.y-z.y,player.x-z.x);z.dir=angle}
  else if(rand()<dt*.45)z.dir+=(rand()-.5)*1.6;
  if(d>19&&z.stun<=0){let ox=Math.cos(angle)*speed*dt,oy=Math.sin(angle)*speed*dt,px=z.x,py=z.y;slideMove(z,ox,oy,8);if(Math.abs(z.x-px)+Math.abs(z.y-py)<.4){z.dir+=.5;slideMove(z,Math.cos(z.dir)*speed*dt,Math.sin(z.dir)*speed*dt,8)}}
  z.walk+=dt*(z.kind?12:7);if(d<24&&z.attack<=0){damage(z.kind?13:8,.1);z.attack=1.1}
@@ -561,5 +589,5 @@ window.addEventListener("blur",()=>{if(started&&!modalActive){paused=true;save()
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&started){paused=true;save()}});
 if(localStorage.getItem(SAVE))$("continueBtn").hidden=false;
 updateHud();drawMinimap();requestAnimationFrame(loop);
-window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,solidLookups,collisionBuckets:collisionBuckets.size,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
+window.DeadCountyDebug={iso,inverseIso,walkVector,readPixel:(x,y)=>[...actorCtx.getImageData(Math.round(x+PAD),Math.round(y+PAD),1,1).data],getMetrics:()=>({...renderStats,chunkCache:chunkCache.size,spriteCache:spriteCache.size,solidLookups,collisionBuckets:collisionBuckets.size,flowBuilds,worldObjects:treeSet.size+cars.length+houses.length+containers.length+furniture.length+streetProps.length,buffer:[BW,BH]}),getState:()=>({stage:state.stage,player:{...player},zombies:zombies.length,world:{w:W,h:H},kills:state.kills,started,paused,inventory:{...state.inv}}),start:()=>start(false),tick:(n=1)=>{for(let i=0;i<n;i++)update(.016)},teleport:(tx,ty)=>{player.x=tx*T+16;player.y=ty*T+16;invalidateScene()},grant:(i,n)=>{if(i in state.inv)state.inv[i]+=n},interact,craft:()=>craft(recipes[0]),save,load};
 })();

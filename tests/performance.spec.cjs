@@ -1,0 +1,28 @@
+const {test,expect}=require('@playwright/test');
+const fs=require('node:fs');
+test('render/collision instrumentation validates persistent layers',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:8765/');
+ await page.click('#startBtn');await page.waitForTimeout(400);
+ const baseline=await page.evaluate(()=>window.DeadCountyDebug.getMetrics());
+ expect(baseline.staticBuilds).toBeGreaterThan(0);
+ expect(baseline.collisionBuckets).toBeGreaterThan(0);
+ await page.waitForTimeout(800);
+ const idle=await page.evaluate(()=>window.DeadCountyDebug.getMetrics());
+ expect(idle.staticBuilds-baseline.staticBuilds).toBe(0);
+ expect(idle.skippedActorFrames).toBeGreaterThan(baseline.skippedActorFrames);
+ expect(idle.lastClearRatio).toBeLessThan(.3);
+ const initialTransform=await page.locator('#world').evaluate(e=>e.style.transform);
+ await page.keyboard.down('d');await page.waitForTimeout(190);await page.keyboard.up('d');
+ const nextTransform=await page.locator('#world').evaluate(e=>e.style.transform);
+ expect(nextTransform).not.toBe(initialTransform);
+ const moving=await page.evaluate(()=>window.DeadCountyDebug.getMetrics());
+ expect(moving.staticBuilds-baseline.staticBuilds).toBeLessThanOrEqual(3);
+ await page.evaluate(()=>window.DeadCountyDebug.tick(130));
+ const horde=await page.evaluate(()=>({state:window.DeadCountyDebug.getState(),metrics:window.DeadCountyDebug.getMetrics()}));
+ expect(horde.state.zombies).toBeGreaterThan(0);
+ expect(horde.metrics.flowBuilds).toBeGreaterThan(0);
+ fs.mkdirSync('test-results',{recursive:true});
+ fs.writeFileSync('test-results/engine-metrics.json',JSON.stringify({baseline,idle,moving,horde:horde.metrics},null,2));
+ expect(errors).toEqual([]);
+});
