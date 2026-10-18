@@ -1,6 +1,6 @@
 # DEAD COUNTY
 
-Jogo de sobrevivência zumbi em pixel art isométrico 3/4, executado diretamente no navegador.
+Jogo de sobrevivência zumbi em pixel art isométrico 3/4, com cenário persistente e renderização incremental de sprites, executado diretamente no navegador.
 
 ## Como jogar
 
