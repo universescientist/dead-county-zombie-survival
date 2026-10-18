@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const T=32,W=112,H=112,CH=16,SW=640,SH=360,TAU=Math.PI*2,SAVE="dead-county-save-v1";
+const T=32,W=112,H=112,CH=16,TAU=Math.PI*2,SAVE="dead-county-save-v1";let SW=640,SH=360;
 const $=id=>document.getElementById(id), canvas=$("game"),ctx=canvas.getContext("2d",{alpha:false}),mc=$("minimap"),mctx=mc.getContext("2d");
 ctx.imageSmoothingEnabled=false;mctx.imageSmoothingEnabled=false;
 let seed=78453321;
@@ -66,6 +66,8 @@ const recipes=[
 ];
 let state,player,zombies=[],particles=[],tracers=[],texts=[],spawnTimer=0,clock=0,uiTimer=0,miniTimer=0,last=0,saveTimer=0,started=false,paused=true,modalActive=true,screenShake=0,audioEnabled=false,audioCtx=null,attackHeld=false,runHeld=false;
 let aim={x:SW/2+80,y:SH/2},keys=new Set(),joy={x:0,y:0},frame=0,chunkCache=new Map(),nearObject=null;
+function resizeGame(){const ratio=Math.max(280,innerWidth)/Math.max(280,innerHeight);if(ratio>=.9){SH=360;SW=Math.round(360*ratio)}else{SW=360;SH=Math.round(360/ratio)}canvas.width=SW;canvas.height=SH;ctx.imageSmoothingEnabled=false;aim={x:SW/2+80,y:SH/2};chunkCache.clear()}
+window.addEventListener("resize",resizeGame);resizeGame();
 const defaultInv=()=>({food:2,water:2,med:2,ammo:48,wood:1,cloth:1,scrap:1,circuit:0,fuel:0});
 function fresh(){
  state={hp:100,stamina:100,hunger:100,thirst:100,infection:0,daytime:0,kills:0,weapon:1,mag:8,inv:defaultInv(),looted:[],stage:"collect",defend:50,elapsed:0,weaponCooldown:0,reload:0,weather:0,weatherTime:120,shout:0};
